@@ -448,7 +448,7 @@ mod tests {
         let mut raw_data = Vec::with_capacity(bytes_per_row * height as usize);
         for _ in 0..height {
             raw_data.push(0u8); // filter byte: None
-            raw_data.extend(std::iter::repeat(0u8).take((width * num_channels) as usize));
+            raw_data.extend(std::iter::repeat_n(0u8, (width * num_channels) as usize));
         }
 
         // Compress with zlib
@@ -525,7 +525,7 @@ mod tests {
         let mut raw_data = Vec::new();
         for _ in 0..height {
             raw_data.push(0u8);
-            raw_data.extend(std::iter::repeat(0u8).take((width * num_channels) as usize));
+            raw_data.extend(std::iter::repeat_n(0u8, (width * num_channels) as usize));
         }
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
         encoder.write_all(&raw_data).unwrap();

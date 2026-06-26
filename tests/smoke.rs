@@ -28,7 +28,7 @@ fn make_test_png() -> Vec<u8> {
     let mut raw_data = Vec::new();
     for _ in 0..height {
         raw_data.push(0u8); // filter byte: None
-        raw_data.extend(std::iter::repeat(128u8).take((width * num_channels) as usize));
+        raw_data.extend(std::iter::repeat_n(128u8, (width * num_channels) as usize));
     }
 
     // Compress with zlib
