@@ -1,0 +1,16 @@
+[package]
+name = "png-pdf-converter"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+pdf-writer = "0.13"
+clap = { version = "4", features = ["derive"] }
+rayon = "1"
+walkdir = "2"
+indicatif = { version = "0.17", features = ["rayon"] }
+anyhow = "1"
+
+[dev-dependencies]
+tempfile = "3"
+flate2 = "1"
