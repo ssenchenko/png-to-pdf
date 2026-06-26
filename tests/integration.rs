@@ -14,11 +14,10 @@ use common::{
     assert_valid_pdf, count_pdfs_recursive, make_grayscale_png, make_rgb_png, make_rgba_png,
 };
 
-/// Test: 3 PNGs (RGB, RGBA, grayscale) in a flat directory produce 3 valid PDFs with exit code 0.
+/// Test: RGB and grayscale PNGs produce valid PDFs; RGBA is rejected (alpha not supported).
 #[test]
 fn test_full_pipeline_small_batch() {
     let rgb_png = make_rgb_png(16, 16);
-    let rgba_png = make_rgba_png(16, 16);
     let gray_png = make_grayscale_png(16, 16);
 
     let tmp = TempDir::new().unwrap();
@@ -27,7 +26,6 @@ fn test_full_pipeline_small_batch() {
     fs::create_dir_all(&input_dir).unwrap();
 
     fs::write(input_dir.join("image_rgb.png"), &rgb_png).unwrap();
-    fs::write(input_dir.join("image_rgba.png"), &rgba_png).unwrap();
     fs::write(input_dir.join("image_gray.png"), &gray_png).unwrap();
 
     let args = Args {
@@ -45,17 +43,43 @@ fn test_full_pipeline_small_batch() {
         "Expected exit code 0 for all-successful batch"
     );
 
-    // Verify 3 PDFs were created
+    // Verify 2 PDFs were created
     let pdf_count = count_pdfs_recursive(&output_dir);
-    assert_eq!(pdf_count, 3, "Expected 3 PDFs in output directory");
+    assert_eq!(pdf_count, 2, "Expected 2 PDFs in output directory");
 
     // Verify each PDF is valid
-    for name in &["image_rgb.pdf", "image_rgba.pdf", "image_gray.pdf"] {
+    for name in &["image_rgb.pdf", "image_gray.pdf"] {
         let pdf_path = output_dir.join(name);
         assert!(pdf_path.exists(), "Expected {} to exist", name);
         let pdf_data = fs::read(&pdf_path).unwrap();
         assert_valid_pdf(&pdf_data);
     }
+}
+
+/// Test: RGBA PNGs are rejected with a failure (alpha not supported for raw pass-through).
+#[test]
+fn test_rgba_png_rejected() {
+    let rgba_png = make_rgba_png(16, 16);
+
+    let tmp = TempDir::new().unwrap();
+    let input_dir = tmp.path().join("input");
+    let output_dir = tmp.path().join("output");
+    fs::create_dir_all(&input_dir).unwrap();
+
+    fs::write(input_dir.join("alpha.png"), &rgba_png).unwrap();
+
+    let args = Args {
+        input_dir: input_dir.clone(),
+        output_dir: output_dir.clone(),
+        dry_run: false,
+        verbose: false,
+        jobs: Some(1),
+        no_overwrite: false,
+    };
+
+    let exit_code = run(args).unwrap();
+    assert_eq!(exit_code, 1, "RGBA PNG should cause failure exit code");
+    assert!(!output_dir.join("alpha.pdf").exists(), "No PDF should be created for RGBA");
 }
 
 /// Test: PNGs in nested directories produce output that mirrors the directory structure.

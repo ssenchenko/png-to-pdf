@@ -194,27 +194,53 @@ pub struct BatchSummary {
 ///
 /// If `num_threads` is Some, creates a scoped rayon ThreadPool with that count;
 /// otherwise uses the global thread pool.
+///
+/// If `progress` is Some, increments the progress bar after each file completes.
+/// If `verbose` is true and a progress bar is provided, prints per-file status
+/// using `pb.println()` to avoid corrupting the progress bar display.
 pub fn convert_batch(
     jobs: &[ConversionJob],
     no_overwrite: bool,
     num_threads: Option<usize>,
+    progress: Option<&indicatif::ProgressBar>,
+    verbose: bool,
 ) -> BatchSummary {
     let start = Instant::now();
+
+    let process_job = |job: &ConversionJob| {
+        let result = convert_single(job, no_overwrite);
+        if let Some(pb) = progress {
+            if verbose {
+                let msg = match &result.outcome {
+                    Outcome::Success => {
+                        format!("[OK] {}", result.relative_path.display())
+                    }
+                    Outcome::Skipped => {
+                        format!("[SKIP] {}", result.relative_path.display())
+                    }
+                    Outcome::Failed { error_message } => {
+                        format!(
+                            "[FAIL] {}: {}",
+                            result.relative_path.display(),
+                            error_message
+                        )
+                    }
+                };
+                pb.println(msg);
+            }
+            pb.inc(1);
+        }
+        result
+    };
 
     let results: Vec<ConversionResult> = if let Some(n) = num_threads {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(n)
             .build()
             .expect("Failed to build rayon thread pool");
-        pool.install(|| {
-            jobs.par_iter()
-                .map(|job| convert_single(job, no_overwrite))
-                .collect()
-        })
+        pool.install(|| jobs.par_iter().map(process_job).collect())
     } else {
-        jobs.par_iter()
-            .map(|job| convert_single(job, no_overwrite))
-            .collect()
+        jobs.par_iter().map(process_job).collect()
     };
 
     let elapsed = start.elapsed();
@@ -351,6 +377,21 @@ pub fn convert_single(job: &ConversionJob, no_overwrite: bool) -> ConversionResu
             };
         }
     };
+
+    // Reject alpha-bearing PNGs — raw IDAT pass-through produces garbled output
+    // because PDF's color space (DeviceRGB/DeviceGray) expects fewer bytes per pixel
+    // than the decoded stream contains (which includes alpha channel bytes).
+    if matches!(info.color_type, ColorType::Rgba | ColorType::GrayscaleAlpha) {
+        return ConversionResult {
+            relative_path,
+            outcome: Outcome::Failed {
+                error_message: format!(
+                    "Alpha-bearing PNGs ({:?}) not supported — raw pass-through requires non-alpha color types",
+                    info.color_type
+                ),
+            },
+        };
+    }
 
     // Generate PDF
     let pdf_bytes = write_pdf(&info);
@@ -736,6 +777,60 @@ mod tests {
     }
 
     #[test]
+    fn test_rejects_rgba_png_in_convert_single() {
+        use crate::discovery::ConversionJob;
+        use std::path::PathBuf;
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let png_data = make_minimal_png(8, 8, 6, false); // RGBA
+        let input_path = tmp.path().join("rgba.png");
+        std::fs::write(&input_path, &png_data).unwrap();
+        let output_path = tmp.path().join("rgba.pdf");
+
+        let job = ConversionJob {
+            input_path,
+            output_path: output_path.clone(),
+            relative_path: PathBuf::from("rgba.pdf"),
+        };
+
+        let result = convert_single(&job, false);
+        assert!(
+            matches!(result.outcome, Outcome::Failed { .. }),
+            "Expected Failed for RGBA PNG, got: {:?}",
+            result.outcome
+        );
+        assert!(!output_path.exists(), "No PDF should be written for RGBA");
+    }
+
+    #[test]
+    fn test_rejects_grayscale_alpha_png_in_convert_single() {
+        use crate::discovery::ConversionJob;
+        use std::path::PathBuf;
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let png_data = make_minimal_png(8, 8, 4, false); // GrayscaleAlpha
+        let input_path = tmp.path().join("ga.png");
+        std::fs::write(&input_path, &png_data).unwrap();
+        let output_path = tmp.path().join("ga.pdf");
+
+        let job = ConversionJob {
+            input_path,
+            output_path: output_path.clone(),
+            relative_path: PathBuf::from("ga.pdf"),
+        };
+
+        let result = convert_single(&job, false);
+        assert!(
+            matches!(result.outcome, Outcome::Failed { .. }),
+            "Expected Failed for GrayscaleAlpha PNG, got: {:?}",
+            result.outcome
+        );
+        assert!(!output_path.exists());
+    }
+
+    #[test]
     fn test_returns_failed_on_bad_input() {
         use crate::discovery::ConversionJob;
         use std::path::PathBuf;
@@ -789,7 +884,7 @@ mod tests {
             });
         }
 
-        let summary = convert_batch(&jobs, false, Some(2));
+        let summary = convert_batch(&jobs, false, Some(2), None, false);
         assert_eq!(summary.total, 5);
         assert_eq!(summary.succeeded, 5);
         assert_eq!(summary.failed, 0);
@@ -839,7 +934,7 @@ mod tests {
             },
         ];
 
-        let summary = convert_batch(&jobs, false, Some(1));
+        let summary = convert_batch(&jobs, false, Some(1), None, false);
         assert_eq!(summary.total, 3);
         assert_eq!(summary.succeeded, 2);
         assert_eq!(summary.failed, 1);

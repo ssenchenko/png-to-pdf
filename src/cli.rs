@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use indicatif::{ProgressBar, ProgressStyle};
 
 /// Convert PNG files to PDF, preserving directory structure.
 #[derive(Parser, Debug)]
@@ -54,8 +55,25 @@ pub fn run(args: Args) -> anyhow::Result<i32> {
     // Create output directory
     std::fs::create_dir_all(&args.output_dir)?;
 
+    // Create progress bar
+    let pb = ProgressBar::new(jobs.len() as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("[{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+            .expect("Invalid progress bar template")
+            .progress_chars("=> "),
+    );
+
     // Run batch conversion
-    let summary = crate::converter::convert_batch(&jobs, args.no_overwrite, args.jobs);
+    let summary = crate::converter::convert_batch(
+        &jobs,
+        args.no_overwrite,
+        args.jobs,
+        Some(&pb),
+        args.verbose,
+    );
+
+    pb.finish_and_clear();
 
     // Print summary to stderr
     eprintln!(
@@ -67,8 +85,9 @@ pub fn run(args: Args) -> anyhow::Result<i32> {
         summary.elapsed.as_secs_f64()
     );
 
-    // If verbose and there are failures, print each
+    // If verbose and there are failures, print each failure detail in the summary
     if args.verbose && !summary.failures.is_empty() {
+        eprintln!("\nFailure details:");
         for failure in &summary.failures {
             if let crate::converter::Outcome::Failed { error_message } = &failure.outcome {
                 eprintln!(

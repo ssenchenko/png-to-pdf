@@ -491,12 +491,11 @@ This table is the single source of truth for task progress. Update status here a
 | 2.2 | End-to-end smoke test | 2.1 | — | [x] |
 | 3.1 | Test helpers and fixtures | 2.2 | 3.2 (tests/) | [x] |
 | 3.2 | Integration tests | 3.1 | — | [x] |
-| 4.1 | Progress bar + verbose output | 3.2 | — | [ ] |
+| 4.1 | Progress bar + verbose output | 3.2 | — | [x] |
 
-**Eligible tasks** (status `[ ]`, all prerequisites `[x]`, no conflicting task `[~]`):
-- Task 4.1: Progress bar + verbose output
+**Eligible tasks:** None — all tasks complete.
 
-**Progress:** 9 / 10 tasks complete
+**Progress:** 10 / 10 tasks complete
 
 ---
 
