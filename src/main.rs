@@ -1,8 +1,14 @@
-mod cli;
-#[allow(dead_code)]
-mod converter;
-pub mod discovery;
+use clap::Parser;
+
+use png_pdf_converter::cli;
 
 fn main() {
-    cli::run();
+    let args = cli::Args::parse();
+    match cli::run(args) {
+        Ok(code) => std::process::exit(code),
+        Err(e) => {
+            eprintln!("Error: {e:#}");
+            std::process::exit(1);
+        }
+    }
 }

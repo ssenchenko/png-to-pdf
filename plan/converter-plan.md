@@ -487,16 +487,16 @@ This table is the single source of truth for task progress. Update status here a
 | 1.3 | Discovery input validation | 1.2 | — | [x] |
 | 1.4 | PNG parser | 1.1 | 1.2 (Cargo.toml) | [x] |
 | 1.5 | PDF writer + convert_single | 1.4 | — | [x] |
-| 2.1 | CLI args + run() orchestration | 1.3, 1.5 | — | [ ] |
-| 2.2 | End-to-end smoke test | 2.1 | — | [ ] |
+| 2.1 | CLI args + run() orchestration | 1.3, 1.5 | — | [x] |
+| 2.2 | End-to-end smoke test | 2.1 | — | [x] |
 | 3.1 | Test helpers and fixtures | 2.2 | 3.2 (tests/) | [ ] |
 | 3.2 | Integration tests | 3.1 | — | [ ] |
 | 4.1 | Progress bar + verbose output | 3.2 | — | [ ] |
 
 **Eligible tasks** (status `[ ]`, all prerequisites `[x]`, no conflicting task `[~]`):
-- Task 2.1: CLI args + run() orchestration
+- Task 3.1: Test helpers and fixtures
 
-**Progress:** 5 / 10 tasks complete
+**Progress:** 7 / 10 tasks complete
 
 ---
 

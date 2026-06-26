@@ -1,7 +1,9 @@
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use anyhow::bail;
 use pdf_writer::{Content, Filter, Finish, Name, Pdf, Rect, Ref};
+use rayon::prelude::*;
 
 use crate::discovery::ConversionJob;
 
@@ -175,6 +177,72 @@ pub enum Outcome {
 pub struct ConversionResult {
     pub relative_path: PathBuf,
     pub outcome: Outcome,
+}
+
+/// Aggregated results of a batch conversion.
+#[derive(Debug)]
+pub struct BatchSummary {
+    pub total: usize,
+    pub succeeded: usize,
+    pub failed: usize,
+    pub skipped: usize,
+    pub elapsed: Duration,
+    pub failures: Vec<ConversionResult>,
+}
+
+/// Convert a batch of PNG files to PDF in parallel using rayon.
+///
+/// If `num_threads` is Some, creates a scoped rayon ThreadPool with that count;
+/// otherwise uses the global thread pool.
+pub fn convert_batch(
+    jobs: &[ConversionJob],
+    no_overwrite: bool,
+    num_threads: Option<usize>,
+) -> BatchSummary {
+    let start = Instant::now();
+
+    let results: Vec<ConversionResult> = if let Some(n) = num_threads {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(n)
+            .build()
+            .expect("Failed to build rayon thread pool");
+        pool.install(|| {
+            jobs.par_iter()
+                .map(|job| convert_single(job, no_overwrite))
+                .collect()
+        })
+    } else {
+        jobs.par_iter()
+            .map(|job| convert_single(job, no_overwrite))
+            .collect()
+    };
+
+    let elapsed = start.elapsed();
+
+    let mut succeeded = 0;
+    let mut failed = 0;
+    let mut skipped = 0;
+    let mut failures = Vec::new();
+
+    for result in results {
+        match &result.outcome {
+            Outcome::Success => succeeded += 1,
+            Outcome::Skipped => skipped += 1,
+            Outcome::Failed { .. } => {
+                failed += 1;
+                failures.push(result);
+            }
+        }
+    }
+
+    BatchSummary {
+        total: jobs.len(),
+        succeeded,
+        failed,
+        skipped,
+        elapsed,
+        failures,
+    }
 }
 
 /// Generate a PDF document from parsed PNG metadata and IDAT data.
@@ -693,5 +761,95 @@ mod tests {
             "Expected Failed, got: {:?}",
             result.outcome
         );
+    }
+
+    #[test]
+    fn test_parallel_execution() {
+        use crate::discovery::ConversionJob;
+        use std::path::PathBuf;
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let input_dir = tmp.path().join("input");
+        let output_dir = tmp.path().join("output");
+        std::fs::create_dir_all(&input_dir).unwrap();
+        std::fs::create_dir_all(&output_dir).unwrap();
+
+        // Create multiple valid PNG files
+        let png_data = make_minimal_png(8, 8, 2, false);
+        let mut jobs = Vec::new();
+        for i in 0..5 {
+            let input_path = input_dir.join(format!("file{}.png", i));
+            std::fs::write(&input_path, &png_data).unwrap();
+            let output_path = output_dir.join(format!("file{}.pdf", i));
+            jobs.push(ConversionJob {
+                input_path,
+                output_path,
+                relative_path: PathBuf::from(format!("file{}.pdf", i)),
+            });
+        }
+
+        let summary = convert_batch(&jobs, false, Some(2));
+        assert_eq!(summary.total, 5);
+        assert_eq!(summary.succeeded, 5);
+        assert_eq!(summary.failed, 0);
+        assert_eq!(summary.skipped, 0);
+        assert!(summary.failures.is_empty());
+    }
+
+    #[test]
+    fn test_continues_on_failure() {
+        use crate::discovery::ConversionJob;
+        use std::path::PathBuf;
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let input_dir = tmp.path().join("input");
+        let output_dir = tmp.path().join("output");
+        std::fs::create_dir_all(&input_dir).unwrap();
+        std::fs::create_dir_all(&output_dir).unwrap();
+
+        let png_data = make_minimal_png(8, 8, 2, false);
+
+        // Two good files
+        let good1_input = input_dir.join("good1.png");
+        std::fs::write(&good1_input, &png_data).unwrap();
+        let good2_input = input_dir.join("good2.png");
+        std::fs::write(&good2_input, &png_data).unwrap();
+
+        // One bad file
+        let bad_input = input_dir.join("bad.png");
+        std::fs::write(&bad_input, b"not a png at all").unwrap();
+
+        let jobs = vec![
+            ConversionJob {
+                input_path: good1_input,
+                output_path: output_dir.join("good1.pdf"),
+                relative_path: PathBuf::from("good1.pdf"),
+            },
+            ConversionJob {
+                input_path: bad_input,
+                output_path: output_dir.join("bad.pdf"),
+                relative_path: PathBuf::from("bad.pdf"),
+            },
+            ConversionJob {
+                input_path: good2_input,
+                output_path: output_dir.join("good2.pdf"),
+                relative_path: PathBuf::from("good2.pdf"),
+            },
+        ];
+
+        let summary = convert_batch(&jobs, false, Some(1));
+        assert_eq!(summary.total, 3);
+        assert_eq!(summary.succeeded, 2);
+        assert_eq!(summary.failed, 1);
+        assert_eq!(summary.skipped, 0);
+        assert_eq!(summary.failures.len(), 1);
+
+        // Verify good files were actually written
+        assert!(output_dir.join("good1.pdf").exists());
+        assert!(output_dir.join("good2.pdf").exists());
+        // Bad file should not have produced output
+        assert!(!output_dir.join("bad.pdf").exists());
     }
 }
