@@ -5,7 +5,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 /// Convert PNG files to PDF, preserving directory structure.
 #[derive(Parser, Debug)]
-#[command(name = "png-pdf-converter", about = "Batch convert PNG files to PDF")]
+#[command(name = "png-pdf", about = "Batch convert PNG files to PDF")]
 pub struct Args {
     /// Input directory containing PNG files
     pub input_dir: PathBuf,

@@ -1,6 +1,6 @@
 use clap::Parser;
 
-use png_pdf_converter::cli;
+use png_pdf::cli;
 
 fn main() {
     let args = cli::Args::parse();

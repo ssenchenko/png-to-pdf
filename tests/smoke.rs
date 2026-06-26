@@ -2,7 +2,7 @@ use std::fs;
 
 use tempfile::TempDir;
 
-use png_pdf_converter::cli::{Args, run};
+use png_pdf::cli::{Args, run};
 
 /// Build a minimal valid RGB PNG programmatically.
 fn make_test_png() -> Vec<u8> {

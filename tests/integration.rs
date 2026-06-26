@@ -7,7 +7,7 @@ mod common;
 
 use std::fs;
 
-use png_pdf_converter::cli::{Args, run};
+use png_pdf::cli::{Args, run};
 use tempfile::TempDir;
 
 use common::{
